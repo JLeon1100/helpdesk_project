@@ -13,7 +13,7 @@ def main() -> None:
     instanciar las capas del sistema (Modelo y Vista) y ejecutar el bucle principal.
     """
     try:
-        # Inicialización del entorno gráfico principal de Tkinter
+        # Inicialización del entorno gráfico (ventana) principal de Tkinter
         root = tk.Tk()
 
         # Instancia del gestor de datos (Bakend/model) | Capa de Lógica y Persistencia
