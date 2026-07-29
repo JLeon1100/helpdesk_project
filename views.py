@@ -50,8 +50,8 @@ class HelpdeskView(ttk.Frame):
 
         # Inicialización de componentes visuales
         self._create_widgets()
-        # self.refresh_table()
-        # self.update_metrics()
+        self.refresh_table()
+        self.update_metrics()
 
     # ==================================================
     # ESTRUCTURA DE LA INTERFAZ Y CREACIÓN DE PANELES
@@ -132,7 +132,7 @@ class HelpdeskView(ttk.Frame):
         self.txt_description.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
 
         # Botón Guardar Ticket
-        btn_save = ttk.Button(form_frame, text="Guardar Ticket")
+        btn_save = ttk.Button(form_frame, text="Guardar Ticket", command=self.on_save_ticket)
         btn_save.pack(fill=tk.X)
 
     def _create_table_panel(self) -> None:
@@ -152,7 +152,7 @@ class HelpdeskView(ttk.Frame):
         self.ent_search = ttk.Entry(search_frame)
         self.ent_search.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
         # Evento <KeyRelease>: Filtra automáticamente al presionar cada tecla
-        #self.ent_search.bind("<KeyRelease>", self.on_search_key_release)
+        self.ent_search.bind("<KeyRelease>", self.on_search_key_release)
 
         # Tabla Treeview -> Define las columnas de la tabla
         columns = ("id", "user", "category", "priority", "status", "description")
@@ -188,9 +188,168 @@ class HelpdeskView(ttk.Frame):
         action_frame.pack(fill=tk.X, pady=(10, 0))
 
         # Botón para cambiar el estado
-        btn_resolve = ttk.Button(action_frame, text="Marcar como Resuelto")
+        btn_resolve = ttk.Button(action_frame, text="Marcar como Resuelto", command=self.on_resolve_ticket)
         btn_resolve.pack(side=tk.LEFT, padx=(0, 10))
 
         # Botón para eliminar un ticket
-        btn_delete = ttk.Button(action_frame, text="Eliminar Ticket")
+        btn_delete = ttk.Button(action_frame, text="Eliminar Ticket", command=self.on_delete_ticket)
         btn_delete.pack(side=tk.LEFT)
+
+    # ==================================================
+    # LÓGICA DE EVENTOS Y ACTUALIZACIÓN DE LA INTERFAZ
+    # ==================================================
+
+    def update_metrics(self) -> None:
+        """
+        Recalcula las métricas desde el TicketManager y actualiza las etiquetas del panel superior.
+        """
+        # Obtiene las métricas actuales
+        metrics = self.manager.get_metrics()
+        # Actualiza las etiquetas del panel
+        self.lbl_total_var.set(f"Total Tickets: {metrics['total']}")
+        self.lbl_pending_var.set(f"Pendientes: {metrics['pending']}")
+        self.lbl_resolved_var.set(f"Resueltos: {metrics['resolved']}")
+
+    def refresh_table(self, ticket_list: Optional[list] = None) -> None:
+        """
+        Limpia y vuelve a poblar las filas de la tabla Treeview.
+
+        Args:
+            ticket_list (Optional[list]): Lista específica a mostrar. Si es None, muestra todos.
+        """
+        # Elimina filas existentes
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Si no recibe una lista específica, muestra todos los tickets
+        if ticket_list is None:
+            ticket_list = self.manager.get_all_tickets()
+
+        # Agrega nuevamente los registros a la tabla
+        for ticket in ticket_list:
+            self.tree.insert(
+                "",
+                tk.END,
+                values=(
+                    ticket.ticket_id,
+                    ticket.user_name,
+                    ticket.category,
+                    ticket.priority,
+                    ticket.status,
+                    ticket.description
+                )
+            )
+
+    def _clear_form(self) -> None:
+        """
+        Limpia las entradas del formulario tras un registro exitoso.
+        """
+        # Vacía todos los campos del formulario
+        self.ent_user.delete(0, tk.END)
+        self.cmb_category.current(0)
+        self.cmb_priority.current(1)
+        self.txt_description.delete("1.0", tk.END)
+
+    # ==================================================
+    # CONTROLADORES DE EVENTOS (BOTONES Y BÚSQUEDA)
+    # ==================================================
+
+    def on_save_ticket(self) -> None:
+        """
+        Maneja el evento de guardar un nuevo ticket. Valida los datos e informa al usuario.
+        """
+        # Obtiene la información del formulario
+        user = self.ent_user.get().strip()
+        category = self.cmb_category.get()
+        priority = self.cmb_priority.get()
+        description = self.txt_description.get("1.0", tk.END).strip()
+
+        # Validación simple de datos obligatorios
+        if not user or not description:
+            messagebox.showwarning("Campos Incompletos",
+                                   "Por favor, completa el usuario y la descripción del problema.")
+            return
+
+        # Crear ticket usando el TicketManager
+        self.manager.create_ticket(
+            user_name=user,
+            description=description,
+            category=category,
+            priority=priority
+        )
+
+        # Informa que el registro fue exitoso
+        messagebox.showinfo("Éxito", "El ticket ha sido registrado correctamente.")
+
+        # Actualiza la interfaz
+        self._clear_form()
+        self.refresh_table()
+        self.update_metrics()
+
+    def on_search_key_release(self, event: tk.Event) -> None:
+        """
+        Filtra dinámicamente la tabla al escribir en el cuadro de búsqueda.
+        """
+        # Obtiene el texto de búsqueda
+        query = self.ent_search.get()
+
+        # Busca los tickets que coinciden
+        filtered_tickets = self.manager.search_tickets(query)
+        self.refresh_table(filtered_tickets)
+
+    def _get_selected_ticket_id(self) -> Optional[int]:
+        """
+        Obtiene el ID del ticket seleccionado en la tabla Treeview.
+
+        Returns:
+            Optional[int]: El ID del ticket o None si no hay selección.
+        """
+        # Obtiene la fila seleccionada
+        selected_item = self.tree.selection()
+
+        # Verifica que exista una selección
+        if not selected_item:
+            messagebox.showwarning("Selección Requerida", "Por favor, selecciona un ticket de la tabla.")
+            return None
+
+        # Obtener los valores de la fila seleccionada
+        values = self.tree.item(selected_item[0], "values")
+        return int(values[0])
+
+    def on_resolve_ticket(self) -> None:
+        """
+        Cambia el estado del ticket seleccionado a 'Resuelto'.
+        """
+        # Obtiene el ticket seleccionado
+        ticket_id = self._get_selected_ticket_id()
+
+        # Actualiza el estado del ticket
+        if ticket_id is not None:
+            if self.manager.update_status(ticket_id, "Resuelto"):
+                messagebox.showinfo("Ticket Actualizado", f"El ticket #{ticket_id} ha sido marcado como Resuelto.")
+
+                # Refresca la información en pantalla
+                self.refresh_table()
+                self.update_metrics()
+
+    def on_delete_ticket(self) -> None:
+        """
+        Solicita confirmación mediante messagebox y elimina el ticket seleccionado.
+        """
+        # Obtiene el ticket seleccionado
+        ticket_id = self._get_selected_ticket_id()
+        if ticket_id is not None:
+
+            # Solicita confirmación antes de eliminar
+            confirm = messagebox.askyesno(
+                "Confirmar Eliminación",
+                f"¿Estás seguro de que deseas eliminar el ticket #{ticket_id}?\nEsta acción no se puede deshacer."
+            )
+            # Elimina el ticket si el usuario confirma
+            if confirm:
+                if self.manager.delete_ticket(ticket_id):
+                    messagebox.showinfo("Ticket Eliminado", f"El ticket #{ticket_id} ha sido eliminado con éxito.")
+
+                    # Actualiza la tabla y las métricas
+                    self.refresh_table()
+                    self.update_metrics()

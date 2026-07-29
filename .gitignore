@@ -1,2 +1,6 @@
-.json
+*.json
 tickets.json
+*__pycache__/
+*.pyc
+.vscode/
+.idea/
